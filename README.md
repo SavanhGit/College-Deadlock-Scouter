@@ -11,5 +11,5 @@ A Streamlit web application that scrapes conference opponent schedules, resolves
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/](https://github.com/)<savanhgit>/deadlock-scout.git
-   cd deadlock-scout
+   git clone [https://github.com/](https://github.com/)<SavanhGit>/College-Deadlock-Scouter.git 
+   cd College-Deadlock-Scouter
