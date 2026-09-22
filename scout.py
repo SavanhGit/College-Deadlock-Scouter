@@ -1,0 +1,263 @@
+import io
+import re
+import time
+from pathlib import Path
+from bs4 import BeautifulSoup
+import pandas as pd
+import requests
+import streamlit as st
+
+BASE_URL = "https://collegedeadlock.com"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CollegiateDeadlockScout/1.0"
+}
+
+session = requests.Session()
+session.headers.update(HEADERS)
+
+HERO_ID_MAP = {
+    1: "Infernus", 2: "Seven", 3: "Vindicta", 4: "Lady Geist", 6: "Abrams",
+    7: "Wraith", 8: "McGinnis", 10: "Paradox", 11: "Dynamo", 12: "Kelvin",
+    13: "Haze", 14: "Hollis", 15: "Bebop", 17: "Grey Talon", 18: "Mo & Krill",
+    19: "Shiv", 20: "Ivy", 25: "Warden", 27: "Yamato", 31: "Lash",
+    35: "Viscous", 48: "Mirage", 50: "Pocket", 52: "Calico"
+}
+
+RANK_TIER_NAMES = [
+    "Unranked", "Initiate", "Seeker", "Alchemist", "Arcanist", 
+    "Ritualist", "Emissary", "Archon", "Oracle", "Phantom", "Ascendant", "Eternus"
+]
+ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
+
+def format_deadlock_rank(rank_int):
+    if not rank_int or not str(rank_int).isdigit():
+        return "Unranked"
+    rank_int = int(rank_int)
+    if rank_int <= 0:
+        return "Unranked"
+    
+    tier_idx = rank_int // 10
+    subrank = rank_int % 10
+    if 1 <= tier_idx < len(RANK_TIER_NAMES):
+        return f"{RANK_TIER_NAMES[tier_idx]} {ROMAN.get(subrank, str(subrank))}"
+    return f"Rank {rank_int}"
+
+def get_opponent_teams(team_url, my_slug):
+    res = session.get(team_url)
+    soup = BeautifulSoup(res.text, "html.parser")
+    opponents = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith("/teams/") and my_slug not in href:
+            full_url = BASE_URL + href if not href.startswith("http") else href
+            name = a.get_text(strip=True)
+            if name and full_url not in [o["url"] for o in opponents]:
+                opponents.append({"name": name, "url": full_url})
+    return opponents
+
+def get_team_players(team_url):
+    res = session.get(team_url)
+    soup = BeautifulSoup(res.text, "html.parser")
+    players = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith("/players/"):
+            player_name = a.get_text(strip=True)
+            full_url = BASE_URL + href if not href.startswith("http") else href
+            if player_name and full_url not in [p["url"] for p in players]:
+                players.append({"name": player_name, "url": full_url})
+    return players
+
+def extract_account_id(player_url):
+    try:
+        res = session.get(player_url, timeout=8)
+        soup = BeautifulSoup(res.text, "html.parser")
+        for a in soup.find_all("a", href=True):
+            if "statlocker.gg" in a["href"]:
+                match = re.search(r"statlocker\.gg/(?:profile|account)/(\d+)", a["href"])
+                if match:
+                    return match.group(1), a["href"]
+    except Exception:
+        pass
+    return None, "Not Found"
+
+def fetch_live_stats(account_id):
+    stats = {
+        "Rank": "Unranked",
+        "PP / MMR": "N/A",
+        "Win Rate (%)": "N/A",
+        "Matches": 0,
+        "Top Heroes (Games / WR)": "N/A"
+    }
+
+    if not account_id or account_id in ("Unknown", "Not Found"):
+        return stats
+
+    try:
+        badge_res = requests.get(
+            f"https://api.deadlock-api.com/v1/players/{account_id}/rank",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=8
+        )
+        if badge_res.status_code == 200:
+            b_data = badge_res.json()
+            badge_val = b_data.get("badge")
+            rank_tier = b_data.get("rank")
+            subrank = b_data.get("subrank")
+            if rank_tier is not None and subrank is not None:
+                stats["Rank"] = f"{RANK_TIER_NAMES[int(rank_tier)]} {ROMAN.get(int(subrank), subrank)}"
+            elif badge_val is not None:
+                stats["Rank"] = format_deadlock_rank(badge_val)
+            final_progress = (b_data.get("last_match") or {}).get("player_rank_final_flat_progress")
+            if final_progress is not None:
+                stats["PP / MMR"] = final_progress
+    except Exception:
+        pass
+
+    try:
+        mmr_res = requests.get(
+            f"https://api.deadlock-api.com/v1/players/{account_id}/mmr-history",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=8
+        )
+        if mmr_res.status_code == 200:
+            mmr_history = mmr_res.json()
+            if isinstance(mmr_history, list) and mmr_history:
+                latest_mmr = mmr_history[-1]
+                pp_value = latest_mmr.get("player_score")
+                if pp_value is not None and stats["PP / MMR"] == "N/A":
+                    stats["PP / MMR"] = pp_value
+    except Exception:
+        pass
+
+    try:
+        hist_res = requests.get(
+            f"https://api.deadlock-api.com/v1/players/{account_id}/match-history?only_stored_history=true",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=8
+        )
+        if hist_res.status_code == 200:
+            matches = hist_res.json()
+            if isinstance(matches, list) and len(matches) > 0:
+                total_matches = len(matches)
+                wins = 0
+                hero_tally = {}
+
+                for m in matches:
+                    is_win = (
+                        m.get("player_result") == 1
+                        or m.get("player_match_outcome") == 1
+                        or m.get("match_result") == 1
+                        or m.get("won") is True
+                    )
+                    if is_win:
+                        wins += 1
+
+                    hid = m.get("hero_id")
+                    if hid:
+                        if hid not in hero_tally:
+                            hero_tally[hid] = {"games": 0, "wins": 0}
+                        hero_tally[hid]["games"] += 1
+                        if is_win:
+                            hero_tally[hid]["wins"] += 1
+
+                stats["Matches"] = total_matches
+                stats["Win Rate (%)"] = f"{round((wins / total_matches) * 100, 1)}%"
+
+                sorted_heroes = sorted(hero_tally.items(), key=lambda item: item[1]["games"], reverse=True)[:3]
+                hero_summary = []
+                for hid, data in sorted_heroes:
+                    h_name = HERO_ID_MAP.get(int(hid), f"Hero #{hid}")
+                    wr = round((data["wins"] / data["games"]) * 100, 1) if data["games"] > 0 else 0
+                    hero_summary.append(f"{h_name} ({data['games']}g, {wr}%)")
+
+                stats["Top Heroes (Games / WR)"] = ", ".join(hero_summary)
+    except Exception:
+        pass
+
+    return stats
+
+
+# --- STREAMLIT UI ---
+st.set_page_config(page_title="Collegiate Deadlock Scout", layout="wide")
+st.title("🎯 Collegiate Deadlock Scouting Report")
+st.write("Scrapes schedule, rosters, and live API telemetry for opposing teams.")
+
+# User inputs
+col1, col2 = st.columns([3, 1])
+with col1:
+    team_input = st.text_input("Enter College Deadlock Team URL or Slug", value="utk-o")
+with col2:
+    start_btn = st.button("Generate Report", type="primary", use_container_width=True)
+
+if start_btn and team_input:
+    # Extract slug and build URL
+    slug = team_input.strip().rstrip("/").split("/")[-1]
+    team_url = f"{BASE_URL}/teams/{slug}"
+
+    with st.status("Gathering opponent roster and player data...", expanded=True) as status:
+        st.write(f"Scraping opponents from: `{team_url}`")
+        opponents = get_opponent_teams(team_url, my_slug=slug)
+        
+        if not opponents:
+            st.warning("No opponents found for this team URL. Verify the slug and try again.")
+            status.update(label="Failed to find opponents", state="error")
+        else:
+            st.write(f"Found **{len(opponents)}** opponent teams.")
+            progress_bar = st.progress(0)
+            scouting_results = []
+
+            for idx, opp in enumerate(opponents):
+                st.write(f"🔍 Scouting team: **{opp['name']}**")
+                players = get_team_players(opp["url"])
+
+                for player in players:
+                    account_id, sl_url = extract_account_id(player["url"])
+                    if account_id:
+                        stats = fetch_live_stats(account_id)
+                    else:
+                        stats = {
+                            "Rank": "N/A", "PP / MMR": "N/A", "Win Rate (%)": "N/A",
+                            "Matches": 0, "Top Heroes (Games / WR)": "N/A"
+                        }
+
+                    scouting_results.append({
+                        "Opponent Team": opp["name"],
+                        "Player": player["name"],
+                        "Rank": stats["Rank"],
+                        "PP / MMR": stats["PP / MMR"],
+                        "Win Rate (%)": stats["Win Rate (%)"],
+                        "Matches": stats["Matches"],
+                        "Top Heroes (Games / WR)": stats["Top Heroes (Games / WR)"],
+                        "Account ID": account_id or "Not Found",
+                        "Statlocker URL": sl_url,
+                        "Profile URL": player["url"]
+                    })
+                    time.sleep(0.1)
+
+                progress_bar.progress((idx + 1) / len(opponents))
+
+            status.update(label="Scouting Complete!", state="complete", expanded=False)
+
+            # Display Data
+            df = pd.DataFrame(scouting_results)
+            st.subheader("Scouting Overview")
+            st.dataframe(df, use_container_width=True)
+
+            # Build Multi-Sheet Excel File in RAM
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                df.to_excel(writer, sheet_name="All Opponents", index=False)
+                for team in df["Opponent Team"].unique():
+                    team_df = df[df["Opponent Team"] == team]
+                    safe_sheet = re.sub(r'[\\/*?:\[\]]', '', str(team))[:30]
+                    team_df.to_excel(writer, sheet_name=safe_sheet, index=False)
+
+            # Download Trigger
+            st.download_button(
+                label="📥 Download Scouting Spreadsheet (.xlsx)",
+                data=excel_buffer.getvalue(),
+                file_name=f"deadlock_scout_{slug}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
