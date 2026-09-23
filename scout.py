@@ -392,6 +392,16 @@ st.markdown("""
     .section-rule { border-top: 1px solid var(--line); margin: 1.5rem 0 1rem; }
     .sidebar-brand { font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; font-weight: 700; line-height: 1.05; }
     .sidebar-note { color: var(--muted); font-size: 0.84rem; line-height: 1.45; margin: 0.6rem 0 1.75rem; }
+    .sidebar-footer {
+        margin-top: auto; padding-top: 1.25rem; border-top: 1px solid var(--line);
+        color: var(--muted); font-size: 0.76rem; line-height: 1.5;
+    }
+    .sidebar-link {
+        display: inline-block; margin-top: 0.35rem; color: var(--ink); text-decoration: none;
+        font-weight: 600; border: 1px solid var(--line); border-radius: 999px; padding: 0.4rem 0.7rem;
+        background: rgba(255,255,255,0.03);
+    }
+    .sidebar-link:hover { border-color: var(--accent); }
     .stButton > button[kind="primary"] {
         background: #252b2e; border: 1px solid #6f797e; color: var(--ink); font-weight: 700;
         min-height: 3rem; border-radius: 6px;
@@ -432,6 +442,13 @@ with st.sidebar:
     st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
     st.caption("Data sources")
     st.caption("College Deadlock roster pages\n\nDeadlock API telemetry")
+    st.markdown(
+        '<div class="sidebar-footer">'
+        '<div>Built for scouting coverage and quick opponent reads.</div>'
+        '<a class="sidebar-link" href="https://github.com/your-user/Deadlock-Scouter" target="_blank" rel="noopener noreferrer">★ Star the repo</a>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 if start_btn and team_input:
     # Extract slug and build URL
