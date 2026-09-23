@@ -7,9 +7,6 @@ A Streamlit web application that scrapes conference opponent schedules, resolves
 - **Player Telemetry:** Aggregates live hero pools, match volume, and rank data.
 - **In-Memory Export:** Generates a formatted multi-sheet `.xlsx` file available for direct download.
 
-## Local Setup
+## How to Use
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/](https://github.com/)<SavanhGit>/College-Deadlock-Scouter.git 
-   cd College-Deadlock-Scouter
+https://collegedeadlockscouter.streamlit.app/
