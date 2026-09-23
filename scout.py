@@ -1,3 +1,4 @@
+import base64
 import io
 import re
 import time
@@ -189,6 +190,30 @@ def fetch_live_stats(account_id):
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="Collegiate Deadlock Scout", layout="wide")
 
+DEFAULT_BACKGROUND_PATH = Path(__file__).with_name("hidden king.jpg")
+
+with st.sidebar:
+    background_photo = st.file_uploader(
+        "Background photo",
+        type=["jpg", "jpeg", "png", "webp"],
+        help="Upload a photo to use behind the scouting application.",
+    )
+
+background_image = ""
+background_name = ""
+if background_photo is not None:
+    photo_bytes = background_photo.getvalue()
+    photo_type = background_photo.type
+    background_name = background_photo.name
+elif DEFAULT_BACKGROUND_PATH.exists():
+    photo_bytes = DEFAULT_BACKGROUND_PATH.read_bytes()
+    photo_type = "image/jpeg"
+    background_name = DEFAULT_BACKGROUND_PATH.name
+
+if background_name:
+    encoded_photo = base64.b64encode(photo_bytes).decode("utf-8")
+    background_image = f"url(data:{photo_type};base64,{encoded_photo})"
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
@@ -210,15 +235,43 @@ st.markdown("""
     }
 
     [data-testid="stAppViewContainer"] {
-        background: var(--paper);
-        background-image: linear-gradient(135deg, rgba(23, 107, 104, 0.05), transparent 38%),
-                          linear-gradient(315deg, rgba(216, 111, 82, 0.04), transparent 32%);
+        background: transparent;
+        isolation: isolate;
+    }
+
+    [data-testid="stApp"] { background: transparent; }
+
+    [data-testid="stAppViewContainer"]::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        background-image: __BACKGROUND_IMAGE__;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+
+    [data-testid="stAppViewContainer"]::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background: rgba(246, 247, 243, 0.68);
+        backdrop-filter: blur(2px);
     }
 
     [data-testid="stHeader"] { background: transparent; }
-    [data-testid="stSidebar"] { background: #e9efea; border-right: 1px solid var(--line); }
+    [data-testid="stSidebar"] { background: rgba(233, 239, 234, 0.9); border-right: 1px solid rgba(220, 228, 223, 0.9); }
     [data-testid="stSidebar"] > div:first-child { padding-top: 2rem; }
-    [data-testid="stMainBlockContainer"] { max-width: 1400px; padding-top: 2.5rem; }
+    [data-testid="stMainBlockContainer"] {
+        max-width: 1400px;
+        padding-top: 2.5rem;
+        background: rgba(255, 255, 255, 0.56);
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        border-radius: 12px;
+        box-shadow: 0 18px 60px rgba(23, 35, 38, 0.12);
+    }
 
     h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; letter-spacing: 0; color: var(--ink); }
     h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.02; margin-bottom: 0.5rem; }
@@ -240,8 +293,13 @@ st.markdown("""
     [data-testid="stMetric"] { background: var(--panel); border: 1px solid var(--line); padding: 1rem; border-radius: 6px; }
     [data-testid="stMetricLabel"] { color: var(--muted); }
     [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+    [data-testid="stFileUploader"] { color: var(--ink); }
+    [data-testid="stWidgetLabel"] p, [data-testid="stCaptionContainer"] p { color: var(--muted); }
 </style>
-""", unsafe_allow_html=True)
+""".replace(
+    "__BACKGROUND_IMAGE__",
+    background_image or "linear-gradient(135deg, #dbe8e2, #f6f7f3 55%, #f0d8cc)",
+), unsafe_allow_html=True)
 
 st.markdown('<div class="eyebrow">COLLEGIATE DEADLOCK / SCOUTING TOOL</div>', unsafe_allow_html=True)
 st.title("Opponent report, without the noise.")
@@ -250,6 +308,8 @@ st.markdown('<div class="subtitle">Scan rosters, rank context, match volume, and
 with st.sidebar:
     st.markdown('<div class="sidebar-brand">Deadlock<br>Scouter</div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-note">Build a clear opponent snapshot from College Deadlock rosters and live player telemetry.</div>', unsafe_allow_html=True)
+    if background_name:
+        st.caption(f"Background loaded: {background_name}")
     st.markdown("### Report setup")
     team_input = st.text_input("Team URL or slug", value="utk-o", help="Paste a College Deadlock team URL or enter its slug.")
     start_btn = st.button("Generate report", type="primary", use_container_width=True)
