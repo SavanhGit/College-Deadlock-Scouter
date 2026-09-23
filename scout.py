@@ -73,14 +73,50 @@ ROMAN_VALUES = {value: key for key, value in ROMAN.items()}
 ROLE_PRIORITY = {"Captain": 0, "Player": 1, "Sub": 2, "Coach": 3}
 LINEUP_ROLES = {"Captain", "Player", "Sub"}
 MAX_TEAM_SIZE = 6
+MAX_SUBRANK = 6
+
+
+def normalize_deadlock_rank(rank_int):
+    if rank_int is None:
+        return 0
+    if isinstance(rank_int, str):
+        rank_int = rank_int.strip()
+        if not rank_int:
+            return 0
+        if rank_int.replace(".", "", 1).isdigit():
+            rank_int = float(rank_int)
+        else:
+            try:
+                rank_int = float(rank_int)
+            except ValueError:
+                return 0
+    if isinstance(rank_int, float):
+        if rank_int.is_integer():
+            rank_int = int(rank_int)
+        else:
+            rank_int = int(round(rank_int))
+    if not isinstance(rank_int, int):
+        try:
+            rank_int = int(rank_int)
+        except (TypeError, ValueError):
+            return 0
+    if rank_int <= 0:
+        return 0
+
+    tier_idx = rank_int // 10
+    subrank = rank_int % 10
+    if tier_idx < 1:
+        return 0
+    if subrank > MAX_SUBRANK:
+        return tier_idx * 10 + MAX_SUBRANK
+    return rank_int
+
 
 def format_deadlock_rank(rank_int):
-    if not rank_int or not str(rank_int).isdigit():
-        return "Unranked"
-    rank_int = int(rank_int)
+    rank_int = normalize_deadlock_rank(rank_int)
     if rank_int <= 0:
         return "Unranked"
-    
+
     tier_idx = rank_int // 10
     subrank = rank_int % 10
     if 1 <= tier_idx < len(RANK_TIER_NAMES):
@@ -90,26 +126,38 @@ def format_deadlock_rank(rank_int):
 def rank_display_to_value(rank_display):
     if not isinstance(rank_display, str):
         return None
+    rank_display = rank_display.strip()
+    if not rank_display or rank_display == "Unranked":
+        return None
     if rank_display.startswith("Rank "):
         try:
-            return float(rank_display.removeprefix("Rank "))
+            return normalize_deadlock_rank(float(rank_display.removeprefix("Rank ")))
         except ValueError:
             return None
     for tier_idx, tier_name in enumerate(RANK_TIER_NAMES):
         prefix = f"{tier_name} "
         if rank_display.startswith(prefix):
-            subrank = ROMAN_VALUES.get(rank_display.removeprefix(prefix))
-            return tier_idx * 10 + subrank if subrank else None
+            suffix = rank_display.removeprefix(prefix).strip()
+            subrank = ROMAN_VALUES.get(suffix)
+            if subrank is None:
+                try:
+                    subrank = int(suffix)
+                except ValueError:
+                    return None
+            return normalize_deadlock_rank(tier_idx * 10 + subrank)
     return None
 
+
 def format_average_rank(rank_value):
-    rounded_value = round(rank_value)
-    tier_idx = rounded_value // 10
+    if rank_value is None or pd.isna(rank_value):
+        return "N/A"
+    normalized = normalize_deadlock_rank(rank_value)
+    tier_idx = normalized // 10
     if 1 <= tier_idx < len(RANK_TIER_NAMES):
-        rank_name = format_deadlock_rank(rounded_value)
+        rank_name = format_deadlock_rank(normalized)
     else:
-        rank_name = f"Rank {rounded_value}"
-    return f"{rank_name} ({rank_value:.1f})"
+        rank_name = f"Rank {normalized}"
+    return f"{rank_name} ({float(rank_value):.1f})"
 
 def get_cached_data(cache_key, factory, ttl_seconds=CACHE_TTL_SECONDS):
     now = time.time()
