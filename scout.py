@@ -445,7 +445,7 @@ with st.sidebar:
     st.markdown(
         '<div class="sidebar-footer">'
         '<div>Built for scouting coverage and quick opponent reads.</div>'
-        '<a class="sidebar-link" href="https://github.com/your-user/Deadlock-Scouter" target="_blank" rel="noopener noreferrer">★ Star the repo</a>'
+        '<a class="sidebar-link" href="https://github.com/SavanhGit/College-Deadlock-Scouter" target="_blank" rel="noopener noreferrer">★ Star the repo</a>'
         '</div>',
         unsafe_allow_html=True,
     )
