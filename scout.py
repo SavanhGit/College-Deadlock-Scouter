@@ -286,7 +286,7 @@ st.markdown("""
 </style>
 """.replace(
     "__BACKGROUND_IMAGE__",
-    background_image or "linear-gradient(135deg, #242a2d, #15191b 55%, #353b3f)",
+    "linear-gradient(135deg, #242a2d, #15191b 55%, #353b3f)",
 ), unsafe_allow_html=True)
 
 st.markdown('<div class="eyebrow">COLLEGIATE DEADLOCK / SCOUTING TOOL</div>', unsafe_allow_html=True)
@@ -296,8 +296,6 @@ st.markdown('<div class="subtitle">Scan rosters, rank context, match volume, and
 with st.sidebar:
     st.markdown('<div class="sidebar-brand">Deadlock<br>Scouter</div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-note">Build a clear opponent snapshot from College Deadlock rosters and live player telemetry.</div>', unsafe_allow_html=True)
-    if background_name:
-        st.caption(f"Background loaded: {background_name}")
     st.markdown("### Report setup")
     team_input = st.text_input("Team URL or slug", value="utk-o", help="Paste a College Deadlock team URL or enter its slug.")
     start_btn = st.button("Generate report", type="primary", use_container_width=True)
