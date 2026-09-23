@@ -192,21 +192,6 @@ st.set_page_config(page_title="Collegiate Deadlock Scout", layout="wide")
 
 DEFAULT_BACKGROUND_PATH = Path(__file__).with_name("hidden king.jpg")
 
-background_image = ""
-background_name = ""
-if background_photo is not None:
-    photo_bytes = background_photo.getvalue()
-    photo_type = background_photo.type
-    background_name = background_photo.name
-elif DEFAULT_BACKGROUND_PATH.exists():
-    photo_bytes = DEFAULT_BACKGROUND_PATH.read_bytes()
-    photo_type = "image/jpeg"
-    background_name = DEFAULT_BACKGROUND_PATH.name
-
-if background_name:
-    encoded_photo = base64.b64encode(photo_bytes).decode("utf-8")
-    background_image = f"url(data:{photo_type};base64,{encoded_photo})"
-
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
