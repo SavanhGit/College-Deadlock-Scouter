@@ -32,6 +32,7 @@ RANK_TIER_NAMES = [
     "Ritualist", "Emissary", "Archon", "Oracle", "Phantom", "Ascendant", "Eternus"
 ]
 ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
+ROMAN_VALUES = {value: key for key, value in ROMAN.items()}
 
 def format_deadlock_rank(rank_int):
     if not rank_int or not str(rank_int).isdigit():
@@ -45,6 +46,30 @@ def format_deadlock_rank(rank_int):
     if 1 <= tier_idx < len(RANK_TIER_NAMES):
         return f"{RANK_TIER_NAMES[tier_idx]} {ROMAN.get(subrank, str(subrank))}"
     return f"Rank {rank_int}"
+
+def rank_display_to_value(rank_display):
+    if not isinstance(rank_display, str):
+        return None
+    if rank_display.startswith("Rank "):
+        try:
+            return float(rank_display.removeprefix("Rank "))
+        except ValueError:
+            return None
+    for tier_idx, tier_name in enumerate(RANK_TIER_NAMES):
+        prefix = f"{tier_name} "
+        if rank_display.startswith(prefix):
+            subrank = ROMAN_VALUES.get(rank_display.removeprefix(prefix))
+            return tier_idx * 10 + subrank if subrank else None
+    return None
+
+def format_average_rank(rank_value):
+    rounded_value = round(rank_value)
+    tier_idx = rounded_value // 10
+    if 1 <= tier_idx < len(RANK_TIER_NAMES):
+        rank_name = format_deadlock_rank(rounded_value)
+    else:
+        rank_name = f"Rank {rounded_value}"
+    return f"{rank_name} ({rank_value:.1f})"
 
 def get_opponent_teams(team_url, my_slug):
     res = session.get(team_url)
@@ -376,13 +401,16 @@ if start_btn and team_input:
             st.markdown('<div class="eyebrow">REPORT READY</div>', unsafe_allow_html=True)
             st.header("Scouting overview")
 
-            ranked_players = df["Rank"].ne("Unranked").sum()
+            rank_values = df["Rank"].map(rank_display_to_value).dropna()
+            ranked_players = len(rank_values)
+            average_rank = format_average_rank(rank_values.mean()) if not rank_values.empty else "N/A"
             average_matches = round(df["Matches"].mean(), 1) if not df.empty else 0
-            metric_cols = st.columns(4)
+            metric_cols = st.columns(5)
             metric_cols[0].metric("Opponents", len(df["Opponent Team"].unique()))
             metric_cols[1].metric("Players", len(df))
             metric_cols[2].metric("Ranked players", int(ranked_players))
-            metric_cols[3].metric("Avg. matches tracked", average_matches)
+            metric_cols[3].metric("Average rank", average_rank)
+            metric_cols[4].metric("Avg. matches tracked", average_matches)
 
             overview_columns = [
                 "Opponent Team", "Player", "Rank", "PP / MMR",
