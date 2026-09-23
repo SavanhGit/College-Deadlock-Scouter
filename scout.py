@@ -605,8 +605,6 @@ if start_btn and team_input:
 
                 progress_bar.progress((idx + 1) / len(opponents))
 
-            status.update(label="Scouting Complete!", state="complete", expanded=False)
-
             # Display report
             df = pd.DataFrame(scouting_results)
             st.markdown('<div class="eyebrow">REPORT READY</div>', unsafe_allow_html=True)
@@ -660,7 +658,13 @@ if start_btn and team_input:
 
             overview_tab, details_tab, export_tab = st.tabs(["Overview", "Player details", "Export"])
             with overview_tab:
-                df_sorted = df.sort_values(["Opponent Team", "Role Order", "Player"], kind="mergesort").reset_index(drop=True)
+                team_order = {opponent["name"]: index for index, opponent in enumerate(opponents)}
+                df_sorted = (
+                    df.assign(_team_order=df["Opponent Team"].map(team_order))
+                    .sort_values(["_team_order", "Role Order", "Player"], kind="mergesort")
+                    .drop(columns="_team_order")
+                    .reset_index(drop=True)
+                )
                 st.dataframe(
                     df_sorted[overview_columns],
                     use_container_width=True,
@@ -710,3 +714,5 @@ if start_btn and team_input:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                 )
+
+            status.update(label="Scouting Complete!", state="complete", expanded=False)
