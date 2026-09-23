@@ -107,6 +107,8 @@ def normalize_deadlock_rank(rank_int):
     subrank = rank_int % 10
     if tier_idx < 1:
         return 0
+    if subrank < 1:
+        return tier_idx * 10 + 1
     if subrank > MAX_SUBRANK:
         return tier_idx * 10 + MAX_SUBRANK
     return rank_int
