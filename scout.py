@@ -192,13 +192,6 @@ st.set_page_config(page_title="Collegiate Deadlock Scout", layout="wide")
 
 DEFAULT_BACKGROUND_PATH = Path(__file__).with_name("hidden king.jpg")
 
-with st.sidebar:
-    background_photo = st.file_uploader(
-        "Background photo",
-        type=["jpg", "jpeg", "png", "webp"],
-        help="Upload a photo to use behind the scouting application.",
-    )
-
 background_image = ""
 background_name = ""
 if background_photo is not None:
@@ -219,14 +212,13 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
     :root {
-        --ink: #172326;
-        --muted: #657477;
-        --paper: #f6f7f3;
-        --panel: #ffffff;
-        --line: #dce4df;
-        --teal: #176b68;
-        --teal-dark: #0f4f4d;
-        --coral: #d86f52;
+        --ink: #edf1f2;
+        --muted: #aeb8bc;
+        --paper: #15191b;
+        --panel: rgba(35, 41, 44, 0.92);
+        --line: rgba(215, 222, 225, 0.18);
+        --accent: #c7cdd0;
+        --accent-dark: #929ba0;
     }
 
     html, body, [class*="css"] {
@@ -257,20 +249,20 @@ st.markdown("""
         position: fixed;
         inset: 0;
         z-index: -1;
-        background: rgba(246, 247, 243, 0.68);
-        backdrop-filter: blur(2px);
+        background: rgba(10, 13, 15, 0.74);
+        backdrop-filter: grayscale(0.7) blur(3px);
     }
 
     [data-testid="stHeader"] { background: transparent; }
-    [data-testid="stSidebar"] { background: rgba(233, 239, 234, 0.9); border-right: 1px solid rgba(220, 228, 223, 0.9); }
+    [data-testid="stSidebar"] { background: rgba(22, 26, 28, 0.94); border-right: 1px solid var(--line); }
     [data-testid="stSidebar"] > div:first-child { padding-top: 2rem; }
     [data-testid="stMainBlockContainer"] {
         max-width: 1400px;
         padding-top: 2.5rem;
-        background: rgba(255, 255, 255, 0.56);
-        border: 1px solid rgba(255, 255, 255, 0.72);
+        background: rgba(21, 25, 27, 0.82);
+        border: 1px solid var(--line);
         border-radius: 12px;
-        box-shadow: 0 18px 60px rgba(23, 35, 38, 0.12);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.38);
     }
 
     h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; letter-spacing: 0; color: var(--ink); }
@@ -278,7 +270,7 @@ st.markdown("""
     h2 { margin-top: 1.5rem; }
 
     .eyebrow {
-        color: var(--coral); font-size: 0.76rem; font-weight: 700;
+        color: var(--accent); font-size: 0.76rem; font-weight: 700;
         letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.75rem;
     }
     .subtitle { color: var(--muted); font-size: 1.05rem; max-width: 680px; margin-bottom: 2rem; }
@@ -286,19 +278,30 @@ st.markdown("""
     .sidebar-brand { font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; font-weight: 700; line-height: 1.05; }
     .sidebar-note { color: var(--muted); font-size: 0.84rem; line-height: 1.45; margin: 0.6rem 0 1.75rem; }
     .stButton > button[kind="primary"] {
-        background: var(--teal); border: 0; color: white; font-weight: 700;
+        background: var(--accent); border: 0; color: #15191b; font-weight: 700;
         min-height: 3rem; border-radius: 6px;
     }
-    .stButton > button[kind="primary"]:hover { background: var(--teal-dark); color: white; }
+    .stButton > button[kind="primary"]:hover { background: var(--accent-dark); color: #15191b; }
     [data-testid="stMetric"] { background: var(--panel); border: 1px solid var(--line); padding: 1rem; border-radius: 6px; }
     [data-testid="stMetricLabel"] { color: var(--muted); }
     [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-    [data-testid="stFileUploader"] { color: var(--ink); }
+    [data-testid="stFileUploader"] { color: var(--ink); background: rgba(35, 41, 44, 0.62); border-radius: 6px; padding: 0.35rem; }
     [data-testid="stWidgetLabel"] p, [data-testid="stCaptionContainer"] p { color: var(--muted); }
+    [data-baseweb="input"], [data-baseweb="select"] > div { background: #252b2e; border-color: var(--line); color: var(--ink); }
+    [data-baseweb="input"] input { color: var(--ink); }
+    [data-baseweb="input"] input::placeholder { color: #879195; }
+    [data-baseweb="tab-list"] { gap: 0.35rem; border-bottom-color: var(--line); }
+    [data-baseweb="tab"] { color: var(--muted); }
+    [data-baseweb="tab"][aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+    [data-testid="stAlert"] { background: rgba(35, 41, 44, 0.9); color: var(--ink); border-color: var(--line); }
+    [data-testid="stStatusWidget"] { background: rgba(35, 41, 44, 0.9); border-color: var(--line); }
+    [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li { color: var(--ink); }
+    [data-testid="stMetricValue"] { color: var(--ink); }
+    [data-testid="stMetricDelta"] { color: var(--muted); }
 </style>
 """.replace(
     "__BACKGROUND_IMAGE__",
-    background_image or "linear-gradient(135deg, #dbe8e2, #f6f7f3 55%, #f0d8cc)",
+    background_image or "linear-gradient(135deg, #242a2d, #15191b 55%, #353b3f)",
 ), unsafe_allow_html=True)
 
 st.markdown('<div class="eyebrow">COLLEGIATE DEADLOCK / SCOUTING TOOL</div>', unsafe_allow_html=True)
