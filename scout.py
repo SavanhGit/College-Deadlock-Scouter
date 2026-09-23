@@ -279,7 +279,7 @@ def get_hero_names():
         return HERO_ID_MAP.copy()
 
     return get_cached_data("heroes", _load_hero_names)
-
+# Looks for our stats
 def fetch_live_stats(account_id, hero_names):
     stats = {
         "Rank": "Unranked",
@@ -392,6 +392,12 @@ def fetch_live_stats(account_id, hero_names):
 st.set_page_config(page_title="Collegiate Deadlock Scout", layout="wide")
 
 DEFAULT_BACKGROUND_PATH = Path(__file__).with_name("hidden king.jpg")
+ICON_PATH = Path(__file__).with_name("icon.png")
+ICON_DATA_URI = (
+    f"data:image/png;base64,{base64.b64encode(ICON_PATH.read_bytes()).decode('ascii')}"
+    if ICON_PATH.exists()
+    else ""
+)
 
 st.markdown("""
 <style>
@@ -461,7 +467,8 @@ st.markdown("""
     }
     .subtitle { color: var(--muted); font-size: 1.05rem; max-width: 680px; margin-bottom: 2rem; }
     .section-rule { border-top: 1px solid var(--line); margin: 1.5rem 0 1rem; }
-    .sidebar-brand { font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; font-weight: 700; line-height: 1.05; }
+    .sidebar-brand { display: flex; align-items: center; gap: 0.65rem; font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; font-weight: 700; line-height: 1.05; }
+    .sidebar-brand img { width: 2.4rem; height: 2.4rem; object-fit: contain; flex: 0 0 auto; }
     .sidebar-note { color: var(--muted); font-size: 0.84rem; line-height: 1.45; margin: 0.6rem 0 1.75rem; }
     .sidebar-footer {
         margin-top: auto; padding-top: 1.25rem; border-top: 1px solid var(--line);
@@ -520,7 +527,7 @@ st.title("Opponent report")
 st.markdown('<div class="subtitle">Scan rosters, rank context, match volume, and hero comfort picks in one focused report.</div>', unsafe_allow_html=True)
 
 with st.sidebar:
-    st.markdown('<div class="sidebar-brand">Deadlock<br>Scouter</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sidebar-brand"><img src="{ICON_DATA_URI}" alt=""><span>Deadlock<br>Scouter</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-note">Build a clear opponent snapshot from College Deadlock rosters and live player telemetry.</div>', unsafe_allow_html=True)
     st.markdown("### Report setup")
     team_input = st.text_input("Team URL or slug", value="", help="Paste a College Deadlock team URL or enter its slug.")
