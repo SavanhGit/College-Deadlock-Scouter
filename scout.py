@@ -70,6 +70,9 @@ RANK_TIER_NAMES = [
 ]
 ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
 ROMAN_VALUES = {value: key for key, value in ROMAN.items()}
+ROLE_PRIORITY = {"Captain": 0, "Player": 1, "Sub": 2, "Coach": 3}
+LINEUP_ROLES = {"Captain", "Player", "Sub"}
+MAX_TEAM_SIZE = 6
 
 def format_deadlock_rank(rank_int):
     if not rank_int or not str(rank_int).isdigit():
@@ -163,13 +166,28 @@ def get_team_players(team_url):
             return []
         soup = BeautifulSoup(html, "html.parser")
         players = []
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if href.startswith("/players/"):
-                player_name = a.get_text(strip=True)
-                full_url = BASE_URL + href if not href.startswith("http") else href
-                if player_name and full_url not in [p["url"] for p in players]:
-                    players.append({"name": player_name, "url": full_url})
+        for li in soup.select("li"):
+            a = li.select_one("a[href^='/players/']")
+            if not a:
+                continue
+
+            player_name = a.get_text(strip=True)
+            full_url = BASE_URL + a["href"] if not a["href"].startswith("http") else a["href"]
+            if not player_name or full_url in [p["url"] for p in players]:
+                continue
+
+            li_text = li.get_text(" ", strip=True)
+            role = "Player"
+            if "Captain" in li_text:
+                role = "Captain"
+            elif "Sub" in li_text:
+                role = "Sub"
+            elif "Coach" in li_text:
+                role = "Coach"
+
+            players.append({"name": player_name, "url": full_url, "role": role})
+
+        players.sort(key=lambda p: (ROLE_PRIORITY.get(p.get("role"), 99), p["name"].lower()))
         return players
 
     return get_cached_data(cache_key, _load_players)
@@ -423,6 +441,21 @@ st.markdown("""
     [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li { color: var(--ink); }
     [data-testid="stMetricValue"] { color: var(--ink); }
     [data-testid="stMetricDelta"] { color: var(--muted); }
+    .roster-row {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 0.75rem; padding: 0.5rem 0.75rem; margin: 0.2rem 0;
+        border: 1px solid var(--line); border-radius: 8px; background: rgba(35, 41, 44, 0.55);
+    }
+    .roster-name { color: var(--ink); font-weight: 500; }
+    .role-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 72px; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.62rem;
+        font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--line);
+    }
+    .role-captain { color: #f2d38a; border-color: rgba(242, 211, 138, 0.6); background: rgba(242, 211, 138, 0.08); }
+    .role-player { color: var(--ink); border-color: rgba(215, 222, 225, 0.34); background: rgba(215, 222, 225, 0.05); }
+    .role-sub { color: #b7d6ff; border-color: rgba(183, 214, 255, 0.45); background: rgba(183, 214, 255, 0.08); }
+    .role-coach { color: #d9a7ff; border-color: rgba(217, 167, 255, 0.5); background: rgba(217, 167, 255, 0.08); }
 </style>
 """.replace(
     "__BACKGROUND_IMAGE__",
@@ -495,6 +528,8 @@ if start_btn and team_input:
                     scouting_results.append({
                         "Opponent Team": opp["name"],
                         "Player": player["name"],
+                        "Role": player.get("role", "Player"),
+                        "Role Order": ROLE_PRIORITY.get(player.get("role", "Player"), 99),
                         "Rank": stats["Rank"],
                         "PP / MMR": stats["PP / MMR"],
                         "Win Rate (%)": stats["Win Rate (%)"],
@@ -526,10 +561,12 @@ if start_btn and team_input:
 
             team_rank_rows = []
             for team, team_df in df.groupby("Opponent Team", sort=False):
-                team_rank_values = team_df["Rank"].map(rank_display_to_value).dropna()
+                lineup_df = team_df[team_df["Role"].isin(LINEUP_ROLES)].copy()
+                lineup_df = lineup_df.sort_values(["Role Order", "Player"], kind="mergesort").head(MAX_TEAM_SIZE)
+                team_rank_values = lineup_df["Rank"].map(rank_display_to_value).dropna()
                 team_rank_rows.append({
                     "Opponent Team": team,
-                    "Players": len(team_df),
+                    "Players": len(lineup_df),
                     "Ranked players": len(team_rank_values),
                     "Team rank estimate": (
                         format_average_rank(team_rank_values.mean())
@@ -552,7 +589,7 @@ if start_btn and team_input:
             )
 
             overview_columns = [
-                "Opponent Team", "Player", "Rank", "PP / MMR",
+                "Opponent Team", "Player", "Role", "Rank", "PP / MMR",
                 "Win Rate (%)", "Matches", "Top Heroes (Games / WR)"
             ]
             details_columns = overview_columns + [
@@ -561,14 +598,16 @@ if start_btn and team_input:
 
             overview_tab, details_tab, export_tab = st.tabs(["Overview", "Player details", "Export"])
             with overview_tab:
+                df_sorted = df.sort_values(["Opponent Team", "Role Order", "Player"], kind="mergesort").reset_index(drop=True)
                 st.dataframe(
-                    df[overview_columns],
+                    df_sorted[overview_columns],
                     use_container_width=True,
                     hide_index=True,
                     height=520,
                     column_config={
                         "Opponent Team": st.column_config.TextColumn("Team", width="medium"),
                         "Player": st.column_config.TextColumn("Player", width="medium"),
+                        "Role": st.column_config.TextColumn("Role", width="small"),
                         "Rank": st.column_config.TextColumn("Rank", width="small"),
                         "PP / MMR": st.column_config.TextColumn("PP / MMR", width="small"),
                         "Win Rate (%)": st.column_config.TextColumn("Win rate", width="small"),
@@ -577,6 +616,16 @@ if start_btn and team_input:
                     },
                 )
             with details_tab:
+                roster_groups = df.sort_values(["Opponent Team", "Role Order", "Player"], kind="mergesort").groupby("Opponent Team", sort=False)
+                for team_name, team_df in roster_groups:
+                    st.markdown(f"### {team_name}")
+                    for _, row in team_df.iterrows():
+                        role = row["Role"]
+                        role_class = f"role-{role.lower()}" if role.lower() in {"captain", "player", "sub", "coach"} else "role-player"
+                        st.markdown(
+                            f'<div class="roster-row"><span class="roster-name">{row["Player"]}</span><span class="role-badge {role_class}">{role}</span></div>',
+                            unsafe_allow_html=True,
+                        )
                 st.dataframe(df[details_columns], use_container_width=True, hide_index=True, height=520)
 
             # Build Multi-Sheet Excel File in RAM
