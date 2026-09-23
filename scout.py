@@ -532,7 +532,7 @@ with st.sidebar:
     st.markdown(f'<div class="sidebar-brand"><img src="{ICON_DATA_URI}" alt=""><span>Deadlock<br>Scouter</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-note">Build a clear opponent snapshot from College Deadlock rosters and live player telemetry.</div>', unsafe_allow_html=True)
     st.markdown("### Report setup")
-    team_input = st.text_input("Team URL or slug", value="", help="Paste a College Deadlock team URL or enter its slug.")
+    team_input = st.text_input("Your Team URL", value="", help="Paste a College Deadlock team URL")
     start_btn = st.button("Generate report", type="primary", use_container_width=True)
     st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
     st.caption("Data sources")
