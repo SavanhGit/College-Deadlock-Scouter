@@ -263,10 +263,10 @@ st.markdown("""
     .sidebar-brand { font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; font-weight: 700; line-height: 1.05; }
     .sidebar-note { color: var(--muted); font-size: 0.84rem; line-height: 1.45; margin: 0.6rem 0 1.75rem; }
     .stButton > button[kind="primary"] {
-        background: var(--accent); border: 0; color: #15191b; font-weight: 700;
+        background: #252b2e; border: 1px solid #6f797e; color: var(--ink); font-weight: 700;
         min-height: 3rem; border-radius: 6px;
     }
-    .stButton > button[kind="primary"]:hover { background: var(--accent-dark); color: #15191b; }
+    .stButton > button[kind="primary"]:hover { background: #343c40; border-color: #aeb8bc; color: var(--ink); }
     [data-testid="stMetric"] { background: var(--panel); border: 1px solid var(--line); padding: 1rem; border-radius: 6px; }
     [data-testid="stMetricLabel"] { color: var(--muted); }
     [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
