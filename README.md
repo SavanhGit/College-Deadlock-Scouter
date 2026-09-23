@@ -4,7 +4,7 @@ A Streamlit web application that scrapes conference opponent schedules, resolves
 
 ## Features
 - **Auto-Roster Discovery:** Scrapes all opponents from a team's College Deadlock URL.
-- **Player Telemetry:** Aggregates live hero pools, match volume, and rank data.
+- **Player Telemetry:** Shows Player Ranks, Matches played, Win-Rate, and most played Hero's.
 - **In-Memory Export:** Generates a formatted multi-sheet `.xlsx` file available for direct download.
 
 ## How to Use
