@@ -1,12 +1,15 @@
 import base64
 import io
 import re
+import threading
 import time
 from pathlib import Path
 from bs4 import BeautifulSoup
 import pandas as pd
 import requests
 import streamlit as st
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE_URL = "https://collegedeadlock.com"
 
@@ -14,8 +17,42 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CollegiateDeadlockScout/1.0"
 }
 
+REQUEST_INTERVAL_SECONDS = 0.35
+CACHE_TTL_SECONDS = 1800
+CACHE_DATA = {}
+REQUEST_LOCK = threading.Lock()
+LAST_REQUEST_AT = 0.0
+
+
+def enforce_request_limit():
+    global LAST_REQUEST_AT
+    with REQUEST_LOCK:
+        now = time.monotonic()
+        elapsed = now - LAST_REQUEST_AT
+        if elapsed < REQUEST_INTERVAL_SECONDS:
+            time.sleep(REQUEST_INTERVAL_SECONDS - elapsed)
+        LAST_REQUEST_AT = time.monotonic()
+
+
+def install_retry_session(sess):
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        backoff_factor=0.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=None,
+        respect_retry_after_header=True,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    sess.mount("http://", adapter)
+    sess.mount("https://", adapter)
+    return sess
+
+
 session = requests.Session()
 session.headers.update(HEADERS)
+session = install_retry_session(session)
 
 HERO_ASSETS_URL = "https://api.deadlock-api.com/v1/assets/heroes"
 
@@ -71,37 +108,79 @@ def format_average_rank(rank_value):
         rank_name = f"Rank {rounded_value}"
     return f"{rank_name} ({rank_value:.1f})"
 
+def get_cached_data(cache_key, factory, ttl_seconds=CACHE_TTL_SECONDS):
+    now = time.time()
+    entry = CACHE_DATA.get(cache_key)
+    if entry and now - entry["timestamp"] < ttl_seconds:
+        return entry["value"]
+    value = factory()
+    CACHE_DATA[cache_key] = {"value": value, "timestamp": now}
+    return value
+
+
+def fetch_html(url, timeout=8, headers=None):
+    enforce_request_limit()
+    try:
+        response = session.get(url, timeout=timeout, headers=headers)
+        if response.status_code == 429:
+            time.sleep(2)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException:
+        return None
+
+
 def get_opponent_teams(team_url, my_slug):
-    res = session.get(team_url)
-    soup = BeautifulSoup(res.text, "html.parser")
-    opponents = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.startswith("/teams/") and my_slug not in href:
-            full_url = BASE_URL + href if not href.startswith("http") else href
-            name_node = a.select_one(".display-caps")
-            name = name_node.get_text(" ", strip=True) if name_node else a.get_text(" ", strip=True)
-            if name and full_url not in [o["url"] for o in opponents]:
-                opponents.append({"name": name, "url": full_url})
-    return opponents
+    slug = team_url.rstrip("/").split("/")[-1]
+    cache_key = f"opponents:{slug}"
+
+    def _load_opponents():
+        html = fetch_html(team_url)
+        if not html:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+        opponents = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.startswith("/teams/") and my_slug not in href:
+                full_url = BASE_URL + href if not href.startswith("http") else href
+                name_node = a.select_one(".display-caps")
+                name = name_node.get_text(" ", strip=True) if name_node else a.get_text(" ", strip=True)
+                if name and full_url not in [o["url"] for o in opponents]:
+                    opponents.append({"name": name, "url": full_url})
+        return opponents
+
+    return get_cached_data(cache_key, _load_opponents)
+
 
 def get_team_players(team_url):
-    res = session.get(team_url)
-    soup = BeautifulSoup(res.text, "html.parser")
-    players = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.startswith("/players/"):
-            player_name = a.get_text(strip=True)
-            full_url = BASE_URL + href if not href.startswith("http") else href
-            if player_name and full_url not in [p["url"] for p in players]:
-                players.append({"name": player_name, "url": full_url})
-    return players
+    slug = team_url.rstrip("/").split("/")[-1]
+    cache_key = f"players:{slug}"
+
+    def _load_players():
+        html = fetch_html(team_url)
+        if not html:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+        players = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.startswith("/players/"):
+                player_name = a.get_text(strip=True)
+                full_url = BASE_URL + href if not href.startswith("http") else href
+                if player_name and full_url not in [p["url"] for p in players]:
+                    players.append({"name": player_name, "url": full_url})
+        return players
+
+    return get_cached_data(cache_key, _load_players)
+
 
 def extract_account_id(player_url):
     try:
-        res = session.get(player_url, timeout=8)
-        soup = BeautifulSoup(res.text, "html.parser")
+        html = fetch_html(player_url, timeout=8)
+        if not html:
+            return None, "Not Found"
+        soup = BeautifulSoup(html, "html.parser")
         for a in soup.find_all("a", href=True):
             if "statlocker.gg" in a["href"]:
                 match = re.search(r"statlocker\.gg/(?:profile|account)/(\d+)", a["href"])
@@ -111,20 +190,25 @@ def extract_account_id(player_url):
         pass
     return None, "Not Found"
 
+
 def get_hero_names():
-    try:
-        response = session.get(HERO_ASSETS_URL, timeout=8)
-        response.raise_for_status()
-        assets = response.json()
-        if isinstance(assets, list):
-            return {
-                int(hero["id"]): hero["name"]
-                for hero in assets
-                if hero.get("id") is not None and hero.get("name")
-            }
-    except (requests.RequestException, TypeError, ValueError, KeyError):
-        pass
-    return HERO_ID_MAP.copy()
+    def _load_hero_names():
+        try:
+            enforce_request_limit()
+            response = session.get(HERO_ASSETS_URL, timeout=8)
+            response.raise_for_status()
+            assets = response.json()
+            if isinstance(assets, list):
+                return {
+                    int(hero["id"]): hero["name"]
+                    for hero in assets
+                    if hero.get("id") is not None and hero.get("name")
+                }
+        except (requests.RequestException, TypeError, ValueError, KeyError):
+            pass
+        return HERO_ID_MAP.copy()
+
+    return get_cached_data("heroes", _load_hero_names)
 
 def fetch_live_stats(account_id, hero_names):
     stats = {
@@ -139,6 +223,7 @@ def fetch_live_stats(account_id, hero_names):
         return stats
 
     try:
+        enforce_request_limit()
         badge_res = requests.get(
             f"https://api.deadlock-api.com/v1/players/{account_id}/rank",
             headers={"User-Agent": "Mozilla/5.0"},
@@ -160,6 +245,7 @@ def fetch_live_stats(account_id, hero_names):
         pass
 
     try:
+        enforce_request_limit()
         mmr_res = requests.get(
             f"https://api.deadlock-api.com/v1/players/{account_id}/mmr-history",
             headers={"User-Agent": "Mozilla/5.0"},
@@ -176,6 +262,7 @@ def fetch_live_stats(account_id, hero_names):
         pass
 
     try:
+        enforce_request_limit()
         hist_res = requests.get(
             f"https://api.deadlock-api.com/v1/players/{account_id}/match-history?only_stored_history=true",
             headers={"User-Agent": "Mozilla/5.0"},
@@ -356,7 +443,7 @@ if start_btn and team_input:
         opponents = get_opponent_teams(team_url, my_slug=slug)
         
         if not opponents:
-            st.warning("No opponents found for this team URL. Verify the slug and try again.")
+            st.warning("No opponents found for this team URL. Verify the slug and try again. The site may be rate-limiting or the roster page changed.")
             status.update(label="Failed to find opponents", state="error")
         else:
             st.write(f"Found **{len(opponents)}** opponent teams.")
@@ -367,12 +454,22 @@ if start_btn and team_input:
             for idx, opp in enumerate(opponents):
                 st.write(f"🔍 Scouting team: **{opp['name']}**")
                 players = get_team_players(opp["url"])
+                if not players:
+                    st.warning(f"No player links were found for {opp['name']} on its roster page. Skipping this team.")
+                    progress_bar.progress((idx + 1) / len(opponents))
+                    continue
 
                 for player in players:
-                    account_id, sl_url = extract_account_id(player["url"])
-                    if account_id:
-                        stats = fetch_live_stats(account_id, hero_names)
-                    else:
+                    try:
+                        account_id, sl_url = extract_account_id(player["url"])
+                        if account_id:
+                            stats = fetch_live_stats(account_id, hero_names)
+                        else:
+                            stats = {
+                                "Rank": "N/A", "PP / MMR": "N/A", "Win Rate (%)": "N/A",
+                                "Matches": 0, "Top Heroes (Games / WR)": "N/A"
+                            }
+                    except Exception:
                         stats = {
                             "Rank": "N/A", "PP / MMR": "N/A", "Win Rate (%)": "N/A",
                             "Matches": 0, "Top Heroes (Games / WR)": "N/A"
