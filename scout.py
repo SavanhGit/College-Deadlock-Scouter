@@ -332,7 +332,7 @@ st.markdown("""
     "linear-gradient(135deg, #242a2d, #15191b 55%, #353b3f)",
 ), unsafe_allow_html=True)
 
-st.markdown('<div class="eyebrow">COLLEGIATE DEADLOCK / SCOUTING TOOL</div>', unsafe_allow_html=True)
+st.markdown('<div class="eyebrow">COLLEGIATE DEADLOCK SCOUTING TOOL</div>', unsafe_allow_html=True)
 st.title("Opponent report")
 st.markdown('<div class="subtitle">Scan rosters, rank context, match volume, and hero comfort picks in one focused report.</div>', unsafe_allow_html=True)
 
