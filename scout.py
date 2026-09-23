@@ -17,6 +17,8 @@ HEADERS = {
 session = requests.Session()
 session.headers.update(HEADERS)
 
+HERO_ASSETS_URL = "https://api.deadlock-api.com/v1/assets/heroes"
+
 HERO_ID_MAP = {
     1: "Infernus", 2: "Seven", 3: "Vindicta", 4: "Lady Geist", 6: "Abrams",
     7: "Wraith", 8: "McGinnis", 10: "Paradox", 11: "Dynamo", 12: "Kelvin",
@@ -52,7 +54,8 @@ def get_opponent_teams(team_url, my_slug):
         href = a["href"]
         if href.startswith("/teams/") and my_slug not in href:
             full_url = BASE_URL + href if not href.startswith("http") else href
-            name = a.get_text(strip=True)
+            name_node = a.select_one(".display-caps")
+            name = name_node.get_text(" ", strip=True) if name_node else a.get_text(" ", strip=True)
             if name and full_url not in [o["url"] for o in opponents]:
                 opponents.append({"name": name, "url": full_url})
     return opponents
@@ -83,7 +86,22 @@ def extract_account_id(player_url):
         pass
     return None, "Not Found"
 
-def fetch_live_stats(account_id):
+def get_hero_names():
+    try:
+        response = session.get(HERO_ASSETS_URL, timeout=8)
+        response.raise_for_status()
+        assets = response.json()
+        if isinstance(assets, list):
+            return {
+                int(hero["id"]): hero["name"]
+                for hero in assets
+                if hero.get("id") is not None and hero.get("name")
+            }
+    except (requests.RequestException, TypeError, ValueError, KeyError):
+        pass
+    return HERO_ID_MAP.copy()
+
+def fetch_live_stats(account_id, hero_names):
     stats = {
         "Rank": "Unranked",
         "PP / MMR": "N/A",
@@ -176,7 +194,7 @@ def fetch_live_stats(account_id):
                 sorted_heroes = sorted(hero_tally.items(), key=lambda item: item[1]["games"], reverse=True)[:3]
                 hero_summary = []
                 for hid, data in sorted_heroes:
-                    h_name = HERO_ID_MAP.get(int(hid), f"Hero #{hid}")
+                    h_name = hero_names.get(int(hid), f"Hero #{hid}")
                     wr = round((data["wins"] / data["games"]) * 100, 1) if data["games"] > 0 else 0
                     hero_summary.append(f"{h_name} ({data['games']}g, {wr}%)")
 
@@ -319,6 +337,7 @@ if start_btn and team_input:
             st.write(f"Found **{len(opponents)}** opponent teams.")
             progress_bar = st.progress(0)
             scouting_results = []
+            hero_names = get_hero_names()
 
             for idx, opp in enumerate(opponents):
                 st.write(f"🔍 Scouting team: **{opp['name']}**")
@@ -327,7 +346,7 @@ if start_btn and team_input:
                 for player in players:
                     account_id, sl_url = extract_account_id(player["url"])
                     if account_id:
-                        stats = fetch_live_stats(account_id)
+                        stats = fetch_live_stats(account_id, hero_names)
                     else:
                         stats = {
                             "Rank": "N/A", "PP / MMR": "N/A", "Win Rate (%)": "N/A",
