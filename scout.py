@@ -151,13 +151,17 @@ def rank_display_to_value(rank_display):
 def format_average_rank(rank_value):
     if rank_value is None or pd.isna(rank_value):
         return "N/A"
-    normalized = normalize_deadlock_rank(rank_value)
+    try:
+        numeric_value = float(rank_value)
+    except (TypeError, ValueError):
+        return "N/A"
+    normalized = normalize_deadlock_rank(numeric_value)
     tier_idx = normalized // 10
     if 1 <= tier_idx < len(RANK_TIER_NAMES):
         rank_name = format_deadlock_rank(normalized)
     else:
         rank_name = f"Rank {normalized}"
-    return f"{rank_name} ({float(rank_value):.1f})"
+    return f"{rank_name} ({numeric_value:.1f})"
 
 def get_cached_data(cache_key, factory, ttl_seconds=CACHE_TTL_SECONDS):
     now = time.time()
@@ -300,8 +304,9 @@ def fetch_live_stats(account_id, hero_names):
             badge_val = b_data.get("badge")
             rank_tier = b_data.get("rank")
             subrank = b_data.get("subrank")
-            if rank_tier and subrank:
-                stats["Rank"] = f"{RANK_TIER_NAMES[int(rank_tier)]} {ROMAN.get(int(subrank), subrank)}"
+            if rank_tier is not None and subrank is not None:
+                safe_rank = normalize_deadlock_rank((int(rank_tier) * 10) + int(subrank))
+                stats["Rank"] = format_deadlock_rank(safe_rank)
             elif badge_val is not None:
                 stats["Rank"] = format_deadlock_rank(badge_val)
             final_progress = (b_data.get("last_match") or {}).get("player_rank_final_flat_progress")
