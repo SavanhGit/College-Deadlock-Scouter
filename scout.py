@@ -105,7 +105,7 @@ def fetch_live_stats(account_id):
             badge_val = b_data.get("badge")
             rank_tier = b_data.get("rank")
             subrank = b_data.get("subrank")
-            if rank_tier is not None and subrank is not None:
+            if rank_tier and subrank:
                 stats["Rank"] = f"{RANK_TIER_NAMES[int(rank_tier)]} {ROMAN.get(int(subrank), subrank)}"
             elif badge_val is not None:
                 stats["Rank"] = format_deadlock_rank(badge_val)
@@ -140,6 +140,13 @@ def fetch_live_stats(account_id):
         if hist_res.status_code == 200:
             matches = hist_res.json()
             if isinstance(matches, list) and len(matches) > 0:
+                if stats["Rank"] == "Unranked":
+                    for match in reversed(matches):
+                        standard_badge = match.get("ranked_display_badge")
+                        if standard_badge:
+                            stats["Rank"] = format_deadlock_rank(standard_badge)
+                            break
+
                 total_matches = len(matches)
                 wins = 0
                 hero_tally = {}
@@ -181,15 +188,74 @@ def fetch_live_stats(account_id):
 
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="Collegiate Deadlock Scout", layout="wide")
-st.title("🎯 Collegiate Deadlock Scouting Report")
-st.write("Scrapes schedule, rosters, and live API telemetry for opposing teams.")
 
-# User inputs
-col1, col2 = st.columns([3, 1])
-with col1:
-    team_input = st.text_input("Enter College Deadlock Team URL or Slug", value="utk-o")
-with col2:
-    start_btn = st.button("Generate Report", type="primary", use_container_width=True)
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+    :root {
+        --ink: #172326;
+        --muted: #657477;
+        --paper: #f6f7f3;
+        --panel: #ffffff;
+        --line: #dce4df;
+        --teal: #176b68;
+        --teal-dark: #0f4f4d;
+        --coral: #d86f52;
+    }
+
+    html, body, [class*="css"] {
+        font-family: 'DM Sans', sans-serif;
+        color: var(--ink);
+    }
+
+    [data-testid="stAppViewContainer"] {
+        background: var(--paper);
+        background-image: linear-gradient(135deg, rgba(23, 107, 104, 0.05), transparent 38%),
+                          linear-gradient(315deg, rgba(216, 111, 82, 0.04), transparent 32%);
+    }
+
+    [data-testid="stHeader"] { background: transparent; }
+    [data-testid="stSidebar"] { background: #e9efea; border-right: 1px solid var(--line); }
+    [data-testid="stSidebar"] > div:first-child { padding-top: 2rem; }
+    [data-testid="stMainBlockContainer"] { max-width: 1400px; padding-top: 2.5rem; }
+
+    h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; letter-spacing: 0; color: var(--ink); }
+    h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.02; margin-bottom: 0.5rem; }
+    h2 { margin-top: 1.5rem; }
+
+    .eyebrow {
+        color: var(--coral); font-size: 0.76rem; font-weight: 700;
+        letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.75rem;
+    }
+    .subtitle { color: var(--muted); font-size: 1.05rem; max-width: 680px; margin-bottom: 2rem; }
+    .section-rule { border-top: 1px solid var(--line); margin: 1.5rem 0 1rem; }
+    .sidebar-brand { font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; font-weight: 700; line-height: 1.05; }
+    .sidebar-note { color: var(--muted); font-size: 0.84rem; line-height: 1.45; margin: 0.6rem 0 1.75rem; }
+    .stButton > button[kind="primary"] {
+        background: var(--teal); border: 0; color: white; font-weight: 700;
+        min-height: 3rem; border-radius: 6px;
+    }
+    .stButton > button[kind="primary"]:hover { background: var(--teal-dark); color: white; }
+    [data-testid="stMetric"] { background: var(--panel); border: 1px solid var(--line); padding: 1rem; border-radius: 6px; }
+    [data-testid="stMetricLabel"] { color: var(--muted); }
+    [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="eyebrow">COLLEGIATE DEADLOCK / SCOUTING TOOL</div>', unsafe_allow_html=True)
+st.title("Opponent report, without the noise.")
+st.markdown('<div class="subtitle">Scan rosters, rank context, match volume, and hero comfort picks in one focused report.</div>', unsafe_allow_html=True)
+
+with st.sidebar:
+    st.markdown('<div class="sidebar-brand">Deadlock<br>Scouter</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-note">Build a clear opponent snapshot from College Deadlock rosters and live player telemetry.</div>', unsafe_allow_html=True)
+    st.markdown("### Report setup")
+    team_input = st.text_input("Team URL or slug", value="utk-o", help="Paste a College Deadlock team URL or enter its slug.")
+    start_btn = st.button("Generate report", type="primary", use_container_width=True)
+    st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
+    st.caption("Data sources")
+    st.caption("College Deadlock roster pages\n\nDeadlock API telemetry")
 
 if start_btn and team_input:
     # Extract slug and build URL
@@ -240,10 +306,46 @@ if start_btn and team_input:
 
             status.update(label="Scouting Complete!", state="complete", expanded=False)
 
-            # Display Data
+            # Display report
             df = pd.DataFrame(scouting_results)
-            st.subheader("Scouting Overview")
-            st.dataframe(df, use_container_width=True)
+            st.markdown('<div class="eyebrow">REPORT READY</div>', unsafe_allow_html=True)
+            st.header("Scouting overview")
+
+            ranked_players = df["Rank"].ne("Unranked").sum()
+            average_matches = round(df["Matches"].mean(), 1) if not df.empty else 0
+            metric_cols = st.columns(4)
+            metric_cols[0].metric("Opponents", len(df["Opponent Team"].unique()))
+            metric_cols[1].metric("Players", len(df))
+            metric_cols[2].metric("Ranked players", int(ranked_players))
+            metric_cols[3].metric("Avg. matches tracked", average_matches)
+
+            overview_columns = [
+                "Opponent Team", "Player", "Rank", "PP / MMR",
+                "Win Rate (%)", "Matches", "Top Heroes (Games / WR)"
+            ]
+            details_columns = overview_columns + [
+                "Account ID", "Statlocker URL", "Profile URL"
+            ]
+
+            overview_tab, details_tab, export_tab = st.tabs(["Overview", "Player details", "Export"])
+            with overview_tab:
+                st.dataframe(
+                    df[overview_columns],
+                    use_container_width=True,
+                    hide_index=True,
+                    height=520,
+                    column_config={
+                        "Opponent Team": st.column_config.TextColumn("Team", width="medium"),
+                        "Player": st.column_config.TextColumn("Player", width="medium"),
+                        "Rank": st.column_config.TextColumn("Rank", width="small"),
+                        "PP / MMR": st.column_config.TextColumn("PP / MMR", width="small"),
+                        "Win Rate (%)": st.column_config.TextColumn("Win rate", width="small"),
+                        "Matches": st.column_config.NumberColumn("Matches", format="%d"),
+                        "Top Heroes (Games / WR)": st.column_config.TextColumn("Comfort picks", width="large"),
+                    },
+                )
+            with details_tab:
+                st.dataframe(df[details_columns], use_container_width=True, hide_index=True, height=520)
 
             # Build Multi-Sheet Excel File in RAM
             excel_buffer = io.BytesIO()
@@ -254,10 +356,13 @@ if start_btn and team_input:
                     safe_sheet = re.sub(r'[\\/*?:\[\]]', '', str(team))[:30]
                     team_df.to_excel(writer, sheet_name=safe_sheet, index=False)
 
-            # Download Trigger
-            st.download_button(
-                label="📥 Download Scouting Spreadsheet (.xlsx)",
-                data=excel_buffer.getvalue(),
-                file_name=f"deadlock_scout_{slug}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            with export_tab:
+                st.subheader("Take the report with you")
+                st.write("Download the complete workbook with an all-opponents sheet and one sheet per team.")
+                st.download_button(
+                    label="Download scouting spreadsheet (.xlsx)",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"deadlock_scout_{slug}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                )
