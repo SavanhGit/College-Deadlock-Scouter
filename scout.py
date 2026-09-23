@@ -401,16 +401,41 @@ if start_btn and team_input:
             st.markdown('<div class="eyebrow">REPORT READY</div>', unsafe_allow_html=True)
             st.header("Scouting overview")
 
-            rank_values = df["Rank"].map(rank_display_to_value).dropna()
-            ranked_players = len(rank_values)
-            average_rank = format_average_rank(rank_values.mean()) if not rank_values.empty else "N/A"
+            rank_values = df["Rank"].map(rank_display_to_value)
+            ranked_players = rank_values.notna().sum()
             average_matches = round(df["Matches"].mean(), 1) if not df.empty else 0
-            metric_cols = st.columns(5)
+            metric_cols = st.columns(4)
             metric_cols[0].metric("Opponents", len(df["Opponent Team"].unique()))
             metric_cols[1].metric("Players", len(df))
             metric_cols[2].metric("Ranked players", int(ranked_players))
-            metric_cols[3].metric("Average rank", average_rank)
-            metric_cols[4].metric("Avg. matches tracked", average_matches)
+            metric_cols[3].metric("Avg. matches tracked", average_matches)
+
+            team_rank_rows = []
+            for team, team_df in df.groupby("Opponent Team", sort=False):
+                team_rank_values = team_df["Rank"].map(rank_display_to_value).dropna()
+                team_rank_rows.append({
+                    "Opponent Team": team,
+                    "Players": len(team_df),
+                    "Ranked players": len(team_rank_values),
+                    "Team rank estimate": (
+                        format_average_rank(team_rank_values.mean())
+                        if not team_rank_values.empty else "N/A"
+                    ),
+                })
+            team_rank_df = pd.DataFrame(team_rank_rows)
+            st.subheader("Team rank estimates")
+            st.caption("Average rank across each opponent's ranked players.")
+            st.dataframe(
+                team_rank_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Opponent Team": st.column_config.TextColumn("Team", width="large"),
+                    "Players": st.column_config.NumberColumn("Players", format="%d"),
+                    "Ranked players": st.column_config.NumberColumn("Ranked players", format="%d"),
+                    "Team rank estimate": st.column_config.TextColumn("Overall rank estimate", width="medium"),
+                },
+            )
 
             overview_columns = [
                 "Opponent Team", "Player", "Rank", "PP / MMR",
@@ -443,6 +468,7 @@ if start_btn and team_input:
             # Build Multi-Sheet Excel File in RAM
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                team_rank_df.to_excel(writer, sheet_name="Team Rank Estimates", index=False)
                 df.to_excel(writer, sheet_name="All Opponents", index=False)
                 for team in df["Opponent Team"].unique():
                     team_df = df[df["Opponent Team"] == team]
