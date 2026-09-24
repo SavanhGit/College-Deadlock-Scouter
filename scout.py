@@ -66,8 +66,8 @@ HERO_ID_MAP = {
 }
 
 RANK_TIER_NAMES = [
-    "Unranked", "Initiate", "Seeker", "Alchemist", "Arcanist", 
-    "Ritualist", "Emissary", "Archon", "Oracle", "Phantom", "Ascendant", "Eternus"
+    "Obscurus", "Initiate", "Seeker", "Acolyte", "Sentinel", "Mystic",
+    "Ritualist", "Emissary", "Oracle", "Phantom", "Ascendant", "Eternus"
 ]
 ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
 ROMAN_VALUES = {value: key for key, value in ROMAN.items()}
@@ -312,23 +312,6 @@ def fetch_live_stats(account_id, hero_names):
             final_progress = (b_data.get("last_match") or {}).get("player_rank_final_flat_progress")
             if final_progress is not None:
                 stats["PP / MMR"] = final_progress
-    except Exception:
-        pass
-
-    try:
-        enforce_request_limit()
-        mmr_res = requests.get(
-            f"https://api.deadlock-api.com/v1/players/{account_id}/mmr-history",
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=8
-        )
-        if mmr_res.status_code == 200:
-            mmr_history = mmr_res.json()
-            if isinstance(mmr_history, list) and mmr_history:
-                latest_mmr = mmr_history[-1]
-                pp_value = latest_mmr.get("player_score")
-                if pp_value is not None and stats["PP / MMR"] == "N/A":
-                    stats["PP / MMR"] = pp_value
     except Exception:
         pass
 
