@@ -71,7 +71,7 @@ RANK_TIER_NAMES = [
 ]
 ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
 ROMAN_VALUES = {value: key for key, value in ROMAN.items()}
-ROLE_PRIORITY = {"Captain": 0, "Player": 1, "Sub": 2, "Coach": 3}
+ROLE_PRIORITY = {"Captain": 0, "Manager": 1, "Player": 2, "Sub": 3, "Coach": 4}
 LINEUP_ROLES = {"Captain", "Player", "Sub"}
 MAX_TEAM_SIZE = 6
 MAX_SUBRANK = 6
@@ -132,6 +132,7 @@ def rank_display_to_value(rank_display):
     rank_display = rank_display.strip()
     if not rank_display or rank_display == "Unranked":
         return None
+    rank_display = rank_display.removesuffix(" (standard)")
     if rank_display.startswith("Rank "):
         try:
             return normalize_deadlock_rank(float(rank_display.removeprefix("Rank ")))
@@ -212,6 +213,8 @@ def get_team_players(team_url):
             role = "Player"
             if "Captain" in li_text:
                 role = "Captain"
+            elif "Manager" in li_text:
+                role = "Manager"
             elif "Sub" in li_text:
                 role = "Sub"
             elif "Coach" in li_text:
@@ -337,7 +340,7 @@ def fetch_live_stats(account_id, hero_names):
                     for match in reversed(matches):
                         standard_badge = match.get("ranked_display_badge")
                         if standard_badge:
-                            stats["Rank"] = format_deadlock_rank(standard_badge)
+                            stats["Rank"] = f"{format_deadlock_rank(standard_badge)} (standard)"
                             break
 
                 total_matches = len(matches)
@@ -507,6 +510,7 @@ st.markdown("""
     .role-player { color: var(--ink); border-color: rgba(215, 222, 225, 0.34); background: rgba(215, 222, 225, 0.05); }
     .role-sub { color: #b7d6ff; border-color: rgba(183, 214, 255, 0.45); background: rgba(183, 214, 255, 0.08); }
     .role-coach { color: #d9a7ff; border-color: rgba(217, 167, 255, 0.5); background: rgba(217, 167, 255, 0.08); }
+    .role-manager { color: #8fe3c0; border-color: rgba(143, 227, 192, 0.5); background: rgba(143, 227, 192, 0.08); }
 </style>
 """.replace(
     "__BACKGROUND_IMAGE__",
@@ -681,7 +685,7 @@ if start_btn and team_input:
                     st.markdown(f"### {team_name}")
                     for _, row in team_df.iterrows():
                         role = row["Role"]
-                        role_class = f"role-{role.lower()}" if role.lower() in {"captain", "player", "sub", "coach"} else "role-player"
+                        role_class = f"role-{role.lower()}" if role.lower() in {"captain", "manager", "player", "sub", "coach"} else "role-player"
                         st.markdown(
                             f'<div class="roster-row"><span class="roster-name">{row["Player"]}</span><span class="role-badge {role_class}">{role}</span></div>',
                             unsafe_allow_html=True,
