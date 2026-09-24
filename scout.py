@@ -4,6 +4,7 @@ import re
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import pandas as pd
 import requests
@@ -187,29 +188,6 @@ def fetch_html(url, timeout=8, headers=None):
         return None
 
 
-def get_opponent_teams(team_url, my_slug):
-    slug = team_url.rstrip("/").split("/")[-1]
-    cache_key = f"opponents:{slug}"
-
-    def _load_opponents():
-        html = fetch_html(team_url)
-        if not html:
-            return []
-        soup = BeautifulSoup(html, "html.parser")
-        opponents = []
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if href.startswith("/teams/") and my_slug not in href:
-                full_url = BASE_URL + href if not href.startswith("http") else href
-                name_node = a.select_one(".display-caps")
-                name = name_node.get_text(" ", strip=True) if name_node else a.get_text(" ", strip=True)
-                if name and full_url not in [o["url"] for o in opponents]:
-                    opponents.append({"name": name, "url": full_url})
-        return opponents
-
-    return get_cached_data(cache_key, _load_opponents)
-
-
 def get_team_players(team_url):
     slug = team_url.rstrip("/").split("/")[-1]
     cache_key = f"players:{slug}"
@@ -245,6 +223,17 @@ def get_team_players(team_url):
         return players
 
     return get_cached_data(cache_key, _load_players)
+
+
+def get_team_name(team_url):
+    html = fetch_html(team_url)
+    fallback_name = team_url.rstrip("/").split("/")[-1].replace("-", " ").title()
+    if not html:
+        return fallback_name
+
+    soup = BeautifulSoup(html, "html.parser")
+    heading = soup.find("h1")
+    return heading.get_text(" ", strip=True) if heading else fallback_name
 
 
 def extract_account_id(player_url):
@@ -525,53 +514,59 @@ st.markdown("""
 ), unsafe_allow_html=True)
 
 st.markdown('<div class="eyebrow">COLLEGIATE DEADLOCK SCOUTING TOOL</div>', unsafe_allow_html=True)
-st.title("Opponent report")
-st.markdown('<div class="subtitle">Scan rosters, rank context, match volume, and hero comfort picks in one focused report.</div>', unsafe_allow_html=True)
+st.title("Team scouting report")
+st.markdown('<div class="subtitle">Scan a team roster, rank context, match volume, and hero comfort picks in one focused report.</div>', unsafe_allow_html=True)
 
 with st.sidebar:
     st.markdown(f'<div class="sidebar-brand"><img src="{ICON_DATA_URI}" alt=""><span>Deadlock<br>Scouter</span></div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-note">Build a clear opponent snapshot from College Deadlock rosters and live player telemetry.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-note">Build a clear team snapshot from College Deadlock rosters and live player telemetry.</div>', unsafe_allow_html=True)
     st.markdown("### Report setup")
-    team_input = st.text_input("Your Team URL", value="", help="Paste a College Deadlock team URL")
+    team_input = st.text_input("Team URL", value="", help="Paste a College Deadlock team URL")
     start_btn = st.button("Generate report", type="primary", use_container_width=True)
     st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
     st.caption("Data sources")
     st.caption("College Deadlock roster pages\n\nDeadlock API telemetry")
     st.markdown(
         '<div class="sidebar-footer">'
-        '<div>Built for scouting coverage and quick opponent reads.</div>'
+        '<div>Built for scouting coverage and quick team reads.</div>'
         '<a class="sidebar-link" href="https://github.com/SavanhGit/College-Deadlock-Scouter" target="_blank" rel="noopener noreferrer">★ Star the repo</a>'
         '</div>',
         unsafe_allow_html=True,
     )
 
 if start_btn and team_input:
-    # Extract slug and build URL
-    slug = team_input.strip().rstrip("/").split("/")[-1]
-    team_url = f"{BASE_URL}/teams/{slug}"
+    team_url = team_input.strip()
+    parsed_url = urlparse(team_url)
+    valid_team_url = (
+        parsed_url.scheme in {"http", "https"}
+        and parsed_url.netloc == urlparse(BASE_URL).netloc
+        and parsed_url.path.rstrip("/").startswith("/teams/")
+        and bool(parsed_url.path.rstrip("/").split("/")[-1])
+    )
+    slug = parsed_url.path.rstrip("/").split("/")[-1] if valid_team_url else "team"
 
-    with st.status("Gathering opponent roster and player data...", expanded=True) as status:
-        st.write(f"Scraping opponents from: `{team_url}`")
-        opponents = get_opponent_teams(team_url, my_slug=slug)
-        
-        if not opponents:
-            st.warning("No opponents found for this team URL. Verify the slug and try again. The site may be rate-limiting or the roster page changed.")
-            status.update(label="Failed to find opponents", state="error")
+    with st.status("Gathering team roster and player data...", expanded=True) as status:
+        if not valid_team_url:
+            st.warning(f"Enter a full College Deadlock team URL, such as `{BASE_URL}/teams/example-team`.")
+            status.update(label="Invalid team URL", state="error")
+            st.stop()
         else:
-            st.write(f"Found **{len(opponents)}** opponent teams.")
-            progress_bar = st.progress(0)
-            scouting_results = []
-            hero_names = get_hero_names()
+            st.write(f"Scraping team roster from: `{team_url}`")
+            team_name = get_team_name(team_url)
+            players = get_team_players(team_url)
 
-            for idx, opp in enumerate(opponents):
-                st.write(f"🔍 Scouting team: **{opp['name']}**")
-                players = get_team_players(opp["url"])
-                if not players:
-                    st.warning(f"No player links were found for {opp['name']} on its roster page. Skipping this team.")
-                    progress_bar.progress((idx + 1) / len(opponents))
-                    continue
+            if not players:
+                st.warning("No player links were found on this team's roster page. Verify the URL or try again later.")
+                status.update(label="Failed to find team players", state="error")
+                st.stop()
+            else:
+                st.write(f"Found **{len(players)}** players on **{team_name}**.")
+                progress_bar = st.progress(0)
+                scouting_results = []
+                hero_names = get_hero_names()
 
-                for player in players:
+                for idx, player in enumerate(players):
+                    st.write(f"Scouting player: **{player['name']}**")
                     try:
                         account_id, sl_url = extract_account_id(player["url"])
                         if account_id:
@@ -582,13 +577,14 @@ if start_btn and team_input:
                                 "Matches": 0, "Top Heroes (Games / WR)": "N/A"
                             }
                     except Exception:
+                        account_id, sl_url = None, "Not Found"
                         stats = {
                             "Rank": "N/A", "PP / MMR": "N/A", "Win Rate (%)": "N/A",
                             "Matches": 0, "Top Heroes (Games / WR)": "N/A"
                         }
 
                     scouting_results.append({
-                        "Opponent Team": opp["name"],
+                        "Team": team_name,
                         "Player": player["name"],
                         "Role": player.get("role", "Player"),
                         "Role Order": ROLE_PRIORITY.get(player.get("role", "Player"), 99),
@@ -601,9 +597,8 @@ if start_btn and team_input:
                         "Statlocker URL": sl_url,
                         "Profile URL": player["url"]
                     })
+                    progress_bar.progress((idx + 1) / len(players))
                     time.sleep(0.1)
-
-                progress_bar.progress((idx + 1) / len(opponents))
 
             # Display report
             df = pd.DataFrame(scouting_results)
@@ -614,18 +609,18 @@ if start_btn and team_input:
             ranked_players = rank_values.notna().sum()
             average_matches = round(df["Matches"].mean(), 1) if not df.empty else 0
             metric_cols = st.columns(4)
-            metric_cols[0].metric("Opponents", len(df["Opponent Team"].unique()))
+            metric_cols[0].metric("Team", team_name)
             metric_cols[1].metric("Players", len(df))
             metric_cols[2].metric("Ranked players", int(ranked_players))
             metric_cols[3].metric("Avg. matches tracked", average_matches)
 
             team_rank_rows = []
-            for team, team_df in df.groupby("Opponent Team", sort=False):
+            for team, team_df in df.groupby("Team", sort=False):
                 lineup_df = team_df[team_df["Role"].isin(LINEUP_ROLES)].copy()
                 lineup_df = lineup_df.sort_values(["Role Order", "Player"], kind="mergesort").head(MAX_TEAM_SIZE)
                 team_rank_values = lineup_df["Rank"].map(rank_display_to_value).dropna()
                 team_rank_rows.append({
-                    "Opponent Team": team,
+                    "Team": team,
                     "Players": len(lineup_df),
                     "Ranked players": len(team_rank_values),
                     "Team rank estimate": (
@@ -635,13 +630,13 @@ if start_btn and team_input:
                 })
             team_rank_df = pd.DataFrame(team_rank_rows)
             st.subheader("Team rank estimates")
-            st.caption("Average rank across each opponent's ranked players.")
+            st.caption("Average rank across this team's ranked players.")
             st.dataframe(
                 team_rank_df,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "Opponent Team": st.column_config.TextColumn("Team", width="large"),
+                    "Team": st.column_config.TextColumn("Team", width="large"),
                     "Players": st.column_config.NumberColumn("Players", format="%d"),
                     "Ranked players": st.column_config.NumberColumn("Ranked players", format="%d"),
                     "Team rank estimate": st.column_config.TextColumn("Overall rank estimate", width="medium"),
@@ -649,7 +644,7 @@ if start_btn and team_input:
             )
 
             overview_columns = [
-                "Opponent Team", "Player", "Role", "Rank", "PP / MMR",
+                "Team", "Player", "Role", "Rank", "PP / MMR",
                 "Win Rate (%)", "Matches", "Top Heroes (Games / WR)"
             ]
             details_columns = overview_columns + [
@@ -658,9 +653,8 @@ if start_btn and team_input:
 
             overview_tab, details_tab, export_tab = st.tabs(["Overview", "Player details", "Export"])
             with overview_tab:
-                team_order = {opponent["name"]: index for index, opponent in enumerate(opponents)}
                 df_sorted = (
-                    df.assign(_team_order=df["Opponent Team"].map(team_order))
+                    df.assign(_team_order=0)
                     .sort_values(["_team_order", "Role Order", "Player"], kind="mergesort")
                     .drop(columns="_team_order")
                     .reset_index(drop=True)
@@ -671,7 +665,7 @@ if start_btn and team_input:
                     hide_index=True,
                     height=520,
                     column_config={
-                        "Opponent Team": st.column_config.TextColumn("Team", width="medium"),
+                        "Team": st.column_config.TextColumn("Team", width="medium"),
                         "Player": st.column_config.TextColumn("Player", width="medium"),
                         "Role": st.column_config.TextColumn("Role", width="small"),
                         "Rank": st.column_config.TextColumn("Rank", width="small"),
@@ -682,7 +676,7 @@ if start_btn and team_input:
                     },
                 )
             with details_tab:
-                roster_groups = df.sort_values(["Opponent Team", "Role Order", "Player"], kind="mergesort").groupby("Opponent Team", sort=False)
+                roster_groups = df.sort_values(["Team", "Role Order", "Player"], kind="mergesort").groupby("Team", sort=False)
                 for team_name, team_df in roster_groups:
                     st.markdown(f"### {team_name}")
                     for _, row in team_df.iterrows():
@@ -698,15 +692,15 @@ if start_btn and team_input:
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
                 team_rank_df.to_excel(writer, sheet_name="Team Rank Estimates", index=False)
-                df.to_excel(writer, sheet_name="All Opponents", index=False)
-                for team in df["Opponent Team"].unique():
-                    team_df = df[df["Opponent Team"] == team]
+                df.to_excel(writer, sheet_name="Team Players", index=False)
+                for team in df["Team"].unique():
+                    team_df = df[df["Team"] == team]
                     safe_sheet = re.sub(r'[\\/*?:\[\]]', '', str(team))[:30]
                     team_df.to_excel(writer, sheet_name=safe_sheet, index=False)
 
             with export_tab:
                 st.subheader("Take the report with you")
-                st.write("Download the complete workbook with an all-opponents sheet and one sheet per team.")
+                st.write("Download the complete workbook with the team roster and player details.")
                 st.download_button(
                     label="Download scouting spreadsheet (.xlsx)",
                     data=excel_buffer.getvalue(),
