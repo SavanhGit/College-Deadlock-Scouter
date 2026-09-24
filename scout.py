@@ -329,7 +329,7 @@ def fetch_live_stats(account_id, hero_names):
     try:
         enforce_request_limit()
         hist_res = requests.get(
-            f"https://api.deadlock-api.com/v1/players/{account_id}/match-history?only_stored_history=true",
+            f"https://api.deadlock-api.com/v1/players/{account_id}/match-history",
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=8
         )
@@ -339,8 +339,9 @@ def fetch_live_stats(account_id, hero_names):
                 if stats["Rank"] == "Unranked":
                     for match in reversed(matches):
                         standard_badge = match.get("ranked_display_badge")
-                        if standard_badge:
-                            stats["Rank"] = f"{format_deadlock_rank(standard_badge)} (standard)"
+                        standard_rank = normalize_deadlock_rank(standard_badge)
+                        if standard_rank:
+                            stats["Rank"] = f"{format_deadlock_rank(standard_rank)} (standard)"
                             break
 
                 total_matches = len(matches)
@@ -529,7 +530,7 @@ with st.sidebar:
     start_btn = st.button("Generate report", type="primary", use_container_width=True)
     st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
     st.caption("Data sources")
-    st.caption("College Deadlock roster pages\n\nDeadlock API telemetry")
+    st.caption("College Deadlock roster pages\n\nDeadlock API telemetry\n\nStatlocker pages")
     st.markdown(
         '<div class="sidebar-footer">'
         '<div>Built for scouting coverage and quick team reads.</div>'
