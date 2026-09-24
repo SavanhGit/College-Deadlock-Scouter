@@ -298,11 +298,17 @@ def fetch_live_stats(account_id, hero_names):
             badge_val = b_data.get("badge")
             rank_tier = b_data.get("rank")
             subrank = b_data.get("subrank")
+            rank_from_parts = 0
             if rank_tier is not None and subrank is not None:
-                safe_rank = normalize_deadlock_rank((int(rank_tier) * 10) + int(subrank))
-                stats["Rank"] = format_deadlock_rank(safe_rank)
-            elif badge_val is not None:
-                stats["Rank"] = format_deadlock_rank(badge_val)
+                try:
+                    rank_from_parts = normalize_deadlock_rank(
+                        (int(rank_tier) * 10) + int(subrank)
+                    )
+                except (TypeError, ValueError):
+                    rank_from_parts = 0
+            endpoint_rank = rank_from_parts or normalize_deadlock_rank(badge_val)
+            if endpoint_rank:
+                stats["Rank"] = format_deadlock_rank(endpoint_rank)
             final_progress = (b_data.get("last_match") or {}).get("player_rank_final_flat_progress")
             if final_progress is not None:
                 stats["PP / MMR"] = final_progress
