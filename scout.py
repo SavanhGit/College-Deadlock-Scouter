@@ -1,5 +1,6 @@
 import base64
 import io
+import logging
 import re
 import threading
 import time
@@ -23,6 +24,7 @@ CACHE_TTL_SECONDS = 1800
 CACHE_DATA = {}
 REQUEST_LOCK = threading.Lock()
 LAST_REQUEST_AT = 0.0
+LOGGER = logging.getLogger(__name__)
 
 
 def enforce_request_limit():
@@ -273,6 +275,19 @@ def get_hero_names():
         return HERO_ID_MAP.copy()
 
     return get_cached_data("heroes", _load_hero_names)
+
+
+def extract_match_history(payload):
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("matches", "match_history", "results", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
 # Looks for our stats
 def fetch_live_stats(account_id, hero_names):
     stats = {
@@ -288,13 +303,16 @@ def fetch_live_stats(account_id, hero_names):
 
     try:
         enforce_request_limit()
-        badge_res = requests.get(
+        badge_res = session.get(
             f"https://api.deadlock-api.com/v1/players/{account_id}/rank",
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=8
         )
+        badge_res.raise_for_status()
         if badge_res.status_code == 200:
             b_data = badge_res.json()
+            if not isinstance(b_data, dict):
+                raise ValueError("Rank endpoint returned a non-object response")
             badge_val = b_data.get("badge")
             rank_tier = b_data.get("rank")
             subrank = b_data.get("subrank")
@@ -312,21 +330,24 @@ def fetch_live_stats(account_id, hero_names):
             final_progress = (b_data.get("last_match") or {}).get("player_rank_final_flat_progress")
             if final_progress is not None:
                 stats["PP / MMR"] = final_progress
-    except Exception:
-        pass
+    except (requests.RequestException, TypeError, ValueError, KeyError) as error:
+        LOGGER.warning("Could not load rank for account %s: %s", account_id, error)
 
     try:
         enforce_request_limit()
-        hist_res = requests.get(
+        hist_res = session.get(
             f"https://api.deadlock-api.com/v1/players/{account_id}/match-history",
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=8
         )
+        hist_res.raise_for_status()
         if hist_res.status_code == 200:
-            matches = hist_res.json()
-            if isinstance(matches, list) and len(matches) > 0:
+            matches = extract_match_history(hist_res.json())
+            if matches:
                 if stats["Rank"] == "Unranked":
                     for match in reversed(matches):
+                        if not isinstance(match, dict):
+                            continue
                         standard_badge = match.get("ranked_display_badge")
                         standard_rank = normalize_deadlock_rank(standard_badge)
                         if standard_rank:
@@ -366,8 +387,8 @@ def fetch_live_stats(account_id, hero_names):
                     hero_summary.append(f"{h_name} ({data['games']}g, {wr}%)")
 
                 stats["Top Heroes (Games / WR)"] = ", ".join(hero_summary)
-    except Exception:
-        pass
+    except (requests.RequestException, TypeError, ValueError, KeyError) as error:
+        LOGGER.warning("Could not load match history for account %s: %s", account_id, error)
 
     return stats
 
